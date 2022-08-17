@@ -13,10 +13,8 @@ def button_held():
 def button_released():
     print("Button released.")
 
-#button.when_pressed = button_pressed ##runs function when button is pressed
-#button.when_held = button_held  ##runs function when button is held for 2.5 sec
-#button.when_released = button_released ##runs function when button is released
+button.when_pressed = button_pressed ##runs function when button is pressed
+button.when_held = button_held  ##runs function when button is held for 2.5 sec
+button.when_released = button_released ##runs function when button is released
 
-#pause()  ##keeps program listening for events
-print(2+2)
-
+pause()  ##keeps program listening for events
