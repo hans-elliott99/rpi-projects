@@ -29,11 +29,18 @@ def classify_image(interpreter, image, top_k=1):
   ordered = np.argpartition(-output, 1)
   return [(i, output[i]) for i in ordered[:top_k]][0]
 
-data_folder = "/home/hans/TFLite_MobileNet/"
+data_folder = "/home/hans/rpi-projects/TFLite_MobileNet/"
 
 model_path = data_folder + "mobilenet/mobilenet_v1_1.0_224_quant.tflite"
 label_path = data_folder + "mobilenet/labels_mobilenet_quant_v1_224.txt"
-image_name = sys.argv[1]
+
+try:
+  image_name = sys.argv[1]
+except Exception as e:
+  print(e)
+  print("provide path from current dir to image - like test_images/test.jpg - as an arg")
+  sys.exit(1)
+
 print(f"{image_name = }")
 
 interpreter = Interpreter(model_path)
