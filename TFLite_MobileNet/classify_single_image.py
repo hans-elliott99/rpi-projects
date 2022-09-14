@@ -29,6 +29,8 @@ def classify_image(interpreter, image, top_k=1):
   ordered = np.argpartition(-output, 1)
   return [(i, output[i]) for i in ordered[:top_k]][0]
 
+
+# MAIN
 data_folder = "/home/hans/rpi-projects/TFLite_MobileNet/"
 
 model_path = data_folder + "mobilenet/mobilenet_v1_1.0_224_quant.tflite"
