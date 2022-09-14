@@ -1,2 +1,0 @@
-Good intro tutorial: https://realpython.com/python-raspberry-pi/#setup-wizard
-
