@@ -1,0 +1,10 @@
+Good intro tutorial: https://realpython.com/python-raspberry-pi/#setup-wizard
+
+mic_hat includes files and programs for testing and using the seeed respeaker mic
+
+
+python version 3.9 came installed with this version of raspbian.
+i installed python version 3.6.5 which can be accessed with python3.6. I installed to use with a pytorch wheel.
+
+successfully installed numpy & open-cv via https://raspberrypi-guide.github.io/programming/install-opencv
+
