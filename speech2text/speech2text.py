@@ -11,6 +11,9 @@ import numpy as np
 from tflite_runtime.interpreter import Interpreter 
 # For importing audio files with correct sample rate
 import librosa
+# For live recording
+import pyaudio
+import wave
 # Utilities
 import json
 from itertools import groupby
@@ -20,10 +23,13 @@ import time
 
 
 
-
-REQUIRED_SAMPLE_RATE = 16000 ##required samplerate for audio file to work with this model
+REQUIRED_SAMPLE_RATE = RESPEAKER_RATE = 16000 ##required samplerate for audio file to work with this model, also happebs to be respeaker's sample rate
 MAX_LENGTH = 246000          ##model performs better when audio sequence is padded to this max length 
-
+RESPEAKER_CHANNELS = 2
+RESPEAKER_WIDTH = 2
+RESPEAKER_INDEX = 1 #run getDeviceInfo.py to get index (input device id)
+CHUNK = 1024
+RECORD_SECONDS = 8
 
 #----------------------- HELP FUNCTIONS ----------------------------#
 ## AUDIO PREP AND CLASSIFICATION
@@ -37,7 +43,11 @@ def normalize_pad(x, pad=True):
   mean = np.mean(x, axis=-1, keepdims=True)
   var = np.var(x, axis=-1, keepdims=True)
   x = np.squeeze((x - mean) / np.sqrt(var + 1e-5))
-  #pad
+  #cropping
+  if x.shape[0] > MAX_LENGTH:
+    n_remove = x.shape[0] - MAX_LENGTH
+    x = x[:-n_remove]
+  #padding
   if pad:
     padding = np.zeros(MAX_LENGTH - x.shape[0])
     x = np.concatenate((x, padding))
@@ -119,63 +129,110 @@ class model_to_text:
 
 #----------------------------- MAIN ----------------------------------#
 def run(model, vocab, audio_path):
-    
+
     print("initializing model...")
     # initialize label encodings in advance of while loop
     label_encodings = model_to_text(vocab_path=vocab)
-    
+
     # Initialize tflite interpreter
     interpreter = Interpreter(model_path=model) ##remove 'tf.lite.'
     interpreter.allocate_tensors()
+    
+    if audio_path==None: ##if no audio file is provided, we are recording live audio
+        # Init pyaudio & define callback
+        p = pyaudio.PyAudio()
 
-    print("transcribing audio...")
-    while True:
-        # Load file first to determine if specs are correct
-        signal, samplerate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
-        assert samplerate==REQUIRED_SAMPLE_RATE, f"sample rate {sample_rate} does not match required sr of {REQUIRED_SAMPLE_RATE}"
+        stream = p.open(
+                    rate=RESPEAKER_RATE,
+                    format=pyaudio.paFloat32,
+                    channels=RESPEAKER_CHANNELS,
+                    input=True,
+                    input_device_index=RESPEAKER_INDEX
+            )
 
-        # forward pass the speech signal through model and get encoded predictions
+        while True:
+            print("listening...")
+            frames = []
+            start = time.time()
+            for i in range(0, int(RESPEAKER_RATE / CHUNK * RECORD_SECONDS)): ##take 16000samples per sec * 5secs = 80000 samples, each iter takes 1024 samples so 80000/1024 = ~78 iterations 
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                decoded = np.frombuffer(data)
+                mono = librosa.to_mono(decoded)
+                frames.append(mono)
+            stop = time.time()
+            print(f"record time = {round(stop-start, 3)}s")
+            # full_signal = np.concatenate([f for f in frames])
+
+            # better to save & load file first?
+            with wave.open("tmp.wav", "w") as wf:
+                wf.setnchannels(RESPEAKER_CHANNELS)
+                wf.setsampwidth(p.get_sample_size(p.get_format_from_width(RESPEAKER_WIDTH)))
+                wf.setframerate(RESPEAKER_RATE)
+                wf.writeframes(b''.join(frames))
+            full_signal, sr = librosa.load("./tmp.wav", sr=REQUIRED_SAMPLE_RATE, mono=True)
+
+            print(f"max {np.max(full_signal)} min {np.min(full_signal)} mean {np.mean(full_signal)} shape {full_signal.shape}")
+            print("transcribing audio...")
+            # forward pass the speech signal through model and get encoded predictions
+            start = time.time()
+            model_output = classify_speech(interpreter, full_signal)
+            print(model_output)
+            stop = time.time()
+            # decode the predictions into text
+            text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
+            print(text)
+            print(f"Inference time: {round(stop-start, 3)}s")
+            
+    else: #if audio file is provide
+        print("transcribing audio file...")
+        full_signal, samplerate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
+        assert samplerate==REQUIRED_SAMPLE_RATE, f"sample rate {samplerate} does not match required sr of {REQUIRED_SAMPLE_RATE}"
+        print("sequence length =", full_signal.shape[0])
+
+        # run inference
         start = time.time()
-        model_output = classify_speech(interpreter, signal)
-        end = time.time()
+        model_output = classify_speech(interpreter, full_signal)
+        print(model_output)
+        stop = time.time()
         # decode the predictions into text
         text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
         print(text)
-        print(f"Inference time: {round(end-start, 3)}s")
-        sys.exit() ##temp
-
-
+        print(f"Inference time: {round(stop-start, 3)}s")
+                                                                                            
+                                                                                            
 def parse_args_and_run():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
         '--audio', '-a',
-        help="path to an audio file if you want one short audio file transcribed",
+        help="path to an audio file if you want one audio file transcribed rather than live audio",
         required=False,
         default=None)
     parser.add_argument(
         '--model', '-m',
-        help="path to speech to text model",
+        help="path to speech to text model if not in current directory",
         required=False,
         default='./wave2vec2-960h.tflite')
     parser.add_argument(
         '--vocab', '-v',
-        help="path to vocab file containg index to character mappings",
+        help="path to vocab file containg index to character mappings if not using default",
         required=False,
         default=None)
 
     args=parser.parse_args()
-    
-    run(model=args.model, 
+
+    run(model=args.model,
         vocab=args.vocab,
         audio_path=args.audio)
-    
 
 
 if __name__=='__main__':
     parse_args_and_run()
-    
+
+
+# So, it works (some how) but this model runs way too slow on raspberry pi's tiny compute
+# This process will work with other types of models (though some tweaks will need to be made in the audio preprocessing and label decoding phase)
 
 
 
