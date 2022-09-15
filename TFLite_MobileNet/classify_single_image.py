@@ -1,6 +1,6 @@
 # https://blog.paperspace.com/tensorflow-lite-raspberry-pi/
 
-from tflite_runtime.interpreter import Interpreter 
+from tflite_runtime.interpreter import Interpreter
 from PIL import Image
 import numpy as np
 import time

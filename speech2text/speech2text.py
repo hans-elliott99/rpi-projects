@@ -1,20 +1,29 @@
-# For modeling
+# ################################ #
+# CONVERT AUDIO FILES TO TEXT #
+# ################################ #
+
+
+import warnings
+warnings.simplefilter("ignore", UserWarning) ##to ignore numpy warning, not advised during testing
+
+# For inputs & model
 import numpy as np
-import tensorflow as tf ##change to: import tflite_runtime.interpreter import Interpreter 
-# For importing wavs with correct sample rate
-import librosa  
+from tflite_runtime.interpreter import Interpreter 
+# For importing audio files with correct sample rate
+import librosa
 # Utilities
 import json
 from itertools import groupby
 import sys
 import argparse
+import time
 
-# MODEL_PATH = "./wave2vec2-960h.tflite"
 
-wav_path = "./test_audio/recording.wav" ##example
 
-REQUIRED_SAMPLE_RATE = 16000
-MAX_LENGTH = 246000
+
+REQUIRED_SAMPLE_RATE = 16000 ##required samplerate for audio file to work with this model
+MAX_LENGTH = 246000          ##model performs better when audio sequence is padded to this max length 
+
 
 #----------------------- HELP FUNCTIONS ----------------------------#
 ## AUDIO PREP AND CLASSIFICATION
@@ -110,24 +119,29 @@ class model_to_text:
 
 #----------------------------- MAIN ----------------------------------#
 def run(model, vocab, audio_path):
+    
+    print("initializing model...")
     # initialize label encodings in advance of while loop
     label_encodings = model_to_text(vocab_path=vocab)
-
+    
     # Initialize tflite interpreter
-    interpreter = tf.lite.Interpreter(model_path=model) ##remove 'tf.lite.'
+    interpreter = Interpreter(model_path=model) ##remove 'tf.lite.'
     interpreter.allocate_tensors()
 
     print("transcribing audio...")
     while True:
         # Load file first to determine if specs are correct
-        signal, sample_rate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
-        assert sample_rate==REQUIRED_SAMPLE_RATE, f"sample rate {sample_rate} does not match required sr of {REQUIRED_SAMPLE_RATE}"
+        signal, samplerate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
+        assert samplerate==REQUIRED_SAMPLE_RATE, f"sample rate {sample_rate} does not match required sr of {REQUIRED_SAMPLE_RATE}"
 
         # forward pass the speech signal through model and get encoded predictions
+        start = time.time()
         model_output = classify_speech(interpreter, signal)
+        end = time.time()
         # decode the predictions into text
         text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
         print(text)
+        print(f"Inference time: {round(end-start, 3)}s")
         sys.exit() ##temp
 
 
@@ -152,11 +166,11 @@ def parse_args_and_run():
         default=None)
 
     args=parser.parse_args()
-
+    
     run(model=args.model, 
         vocab=args.vocab,
         audio_path=args.audio)
-
+    
 
 
 if __name__=='__main__':
