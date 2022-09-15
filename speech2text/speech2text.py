@@ -9,7 +9,7 @@ warnings.simplefilter("ignore", UserWarning) ##to ignore numpy warning, not advi
 # For inputs & model
 import numpy as np
 from tflite_runtime.interpreter import Interpreter 
-# For importing audio files with correct sample rate
+# For importing audio files with correct format
 import librosa
 # For live recording
 import pyaudio
@@ -18,10 +18,12 @@ import wave
 import json
 from itertools import groupby
 import sys
+import os
 import argparse
 import time
-
-
+# For LEDs
+from pixels import pixels
+pixels.off()
 
 REQUIRED_SAMPLE_RATE = RESPEAKER_RATE = 16000 ##required samplerate for audio file to work with this model, also happebs to be respeaker's sample rate
 MAX_LENGTH = 246000          ##model performs better when audio sequence is padded to this max length 
@@ -29,7 +31,7 @@ RESPEAKER_CHANNELS = 2
 RESPEAKER_WIDTH = 2
 RESPEAKER_INDEX = 1 #run getDeviceInfo.py to get index (input device id)
 CHUNK = 1024
-RECORD_SECONDS = 8
+RECORD_SECONDS = 10
 
 #----------------------- HELP FUNCTIONS ----------------------------#
 ## AUDIO PREP AND CLASSIFICATION
@@ -126,7 +128,8 @@ class model_to_text:
         tokens = [k if k != self.dimiliter_token else " " for k in tokens]
         return "".join(tokens).strip()
 
-
+## PIXELS
+#---------------------------------------------------------------------#
 #----------------------------- MAIN ----------------------------------#
 def run(model, vocab, audio_path):
 
@@ -139,55 +142,70 @@ def run(model, vocab, audio_path):
     interpreter.allocate_tensors()
     
     if audio_path==None: ##if no audio file is provided, we are recording live audio
-        # Init pyaudio & define callback
+        # Init pyaudio and start live stream
         p = pyaudio.PyAudio()
-
         stream = p.open(
                     rate=RESPEAKER_RATE,
-                    format=pyaudio.paFloat32,
+                    format=p.get_format_from_width(RESPEAKER_WIDTH),
                     channels=RESPEAKER_CHANNELS,
                     input=True,
                     input_device_index=RESPEAKER_INDEX
             )
-
         while True:
-            print("listening...")
-            frames = []
-            start = time.time()
-            for i in range(0, int(RESPEAKER_RATE / CHUNK * RECORD_SECONDS)): ##take 16000samples per sec * 5secs = 80000 samples, each iter takes 1024 samples so 80000/1024 = ~78 iterations 
-                data = stream.read(CHUNK, exception_on_overflow=False)
-                decoded = np.frombuffer(data)
-                mono = librosa.to_mono(decoded)
-                frames.append(mono)
-            stop = time.time()
-            print(f"record time = {round(stop-start, 3)}s")
-            # full_signal = np.concatenate([f for f in frames])
+            try:
+                pixels.off()
+                print("listening...")
+                pixels.wakeup() ##start leds
+                frames = []
+                start = time.time()
+                pixels.think()
+                for _ in range(0, int(RESPEAKER_RATE / CHUNK * RECORD_SECONDS)): ##take 16000samples per sec * 5secs = 80000 samples, each iter takes 1024 samples so 80000/1024 = ~78 iterations 
+                    data = stream.read(CHUNK, exception_on_overflow=False)
+                    frames.append(data)
+                stop = time.time()
+                pixels.off() ##stop leds
+                print(f"record time = {round(stop-start, 3)}s")
 
-            # better to save & load file first?
-            with wave.open("tmp.wav", "w") as wf:
-                wf.setnchannels(RESPEAKER_CHANNELS)
-                wf.setsampwidth(p.get_sample_size(p.get_format_from_width(RESPEAKER_WIDTH)))
-                wf.setframerate(RESPEAKER_RATE)
-                wf.writeframes(b''.join(frames))
-            full_signal, sr = librosa.load("./tmp.wav", sr=REQUIRED_SAMPLE_RATE, mono=True)
+                # Now save the audio to a temp wav file and load in with librosa
+                wav_file = "./tmp.wav"
+                with wave.open(wav_file, "w") as wf:
+                    wf.setnchannels(RESPEAKER_CHANNELS)
+                    wf.setsampwidth(p.get_sample_size(p.get_format_from_width(RESPEAKER_WIDTH)))
+                    wf.setframerate(RESPEAKER_RATE)
+                    wf.writeframes(b''.join(frames))
+                full_signal, _ = librosa.load(wav_file, sr=REQUIRED_SAMPLE_RATE, mono=True)
+                print("signal length =", full_signal.shape[0])
+                ### full_signal = np.concatenate([f for f in frames])
 
-            print(f"max {np.max(full_signal)} min {np.min(full_signal)} mean {np.mean(full_signal)} shape {full_signal.shape}")
-            print("transcribing audio...")
-            # forward pass the speech signal through model and get encoded predictions
-            start = time.time()
-            model_output = classify_speech(interpreter, full_signal)
-            print(model_output)
-            stop = time.time()
-            # decode the predictions into text
-            text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
-            print(text)
-            print(f"Inference time: {round(stop-start, 3)}s")
+                print("transcribing audio...")
+                # forward pass the speech signal through model and get encoded predictions
+                start = time.time()
+                model_output = classify_speech(interpreter, full_signal)
+                print(model_output)
+                stop = time.time()
+                # decode the predictions into text
+                text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
+                print(text)
+                print(f"Inference time: {round(stop-start, 3)}s")
+
+                stop_words = [g+" "+b for g in ["good", "gud", "god"] for b in ["bye", "by"]]
+                if text.lower() in stop_words:
+                    raise KeyboardInterrupt
+
+            except KeyboardInterrupt:
+                pixels.off()
+                try: ##remove temp wav file if it exists
+                    os.remove(wav_file)
+                except OSError:
+                    pass
+                print("KeyboardInterrupt: Program ended by user"); sys.exit()
+
             
     else: #if audio file is provide
         print("transcribing audio file...")
         full_signal, samplerate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
         assert samplerate==REQUIRED_SAMPLE_RATE, f"sample rate {samplerate} does not match required sr of {REQUIRED_SAMPLE_RATE}"
-        print("sequence length =", full_signal.shape[0])
+        print("signal length =", full_signal.shape[0])
 
         # run inference
         start = time.time()
@@ -199,7 +217,8 @@ def run(model, vocab, audio_path):
         print(text)
         print(f"Inference time: {round(stop-start, 3)}s")
                                                                                             
-                                                                                            
+
+                                                                                       
 def parse_args_and_run():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -231,7 +250,7 @@ if __name__=='__main__':
     parse_args_and_run()
 
 
-# So, it works (some how) but this model runs way too slow on raspberry pi's tiny compute
+# So, it works (some how) but this model runs way too slow on raspberry pi's tiny compute - quantization led to 3x speed up (from ~ 45s to ~15s)
 # This process will work with other types of models (though some tweaks will need to be made in the audio preprocessing and label decoding phase)
 
 
