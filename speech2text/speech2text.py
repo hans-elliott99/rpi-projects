@@ -1,6 +1,6 @@
-# ################################ #
-# CONVERT AUDIO FILES TO TEXT #
-# ################################ #
+# ############################################# #
+# CONVERT AUDIO FILES OR LIVE RECORDING TO TEXT #
+# ############################################# #
 
 
 import warnings
@@ -22,18 +22,10 @@ import os
 import argparse
 import time
 # For LEDs
-from pixels import pixels
+from pixels import pixels as pixels
 pixels.off()
 
-REQUIRED_SAMPLE_RATE = RESPEAKER_RATE = 16000 ##required samplerate for audio file to work with this model, also happebs to be respeaker's sample rate
-MAX_LENGTH = 246000          ##model performs better when audio sequence is padded to this max length 
-RESPEAKER_CHANNELS = 2
-RESPEAKER_WIDTH = 2
-RESPEAKER_INDEX = 1 #run getDeviceInfo.py to get index (input device id)
-CHUNK = 1024
-RECORD_SECONDS = 10
-
-#----------------------- HELP FUNCTIONS ----------------------------#
+#---------------------HELP FUNCTIONS ----------------------------#
 ## AUDIO PREP AND CLASSIFICATION
 def normalize_pad(x, pad=True):
   """
@@ -128,10 +120,17 @@ class model_to_text:
         tokens = [k if k != self.dimiliter_token else " " for k in tokens]
         return "".join(tokens).strip()
 
-## PIXELS
+## PIXELS - pixels.py which depends on apa102.py
 #---------------------------------------------------------------------#
 #----------------------------- MAIN ----------------------------------#
-def run(model, vocab, audio_path):
+def run(model, vocab, audio_path, duration):
+    REQUIRED_SAMPLE_RATE = RESPEAKER_RATE = 16000 ##required samplerate for audio file to work with this model, also happebs to be respeaker's sample rate
+    MAX_LENGTH = 246000          ##model performs better when audio sequence is padded to this max length 
+    RESPEAKER_CHANNELS = 2
+    RESPEAKER_WIDTH = 2
+    RESPEAKER_INDEX = 1 #run getDeviceInfo.py to get respeaker index (input device id)
+    CHUNK = 1024
+    RECORD_SECONDS = int(duration)
 
     print("initializing model...")
     # initialize label encodings in advance of while loop
@@ -161,6 +160,10 @@ def run(model, vocab, audio_path):
                 pixels.think()
                 for _ in range(0, int(RESPEAKER_RATE / CHUNK * RECORD_SECONDS)): ##take 16000samples per sec * 5secs = 80000 samples, each iter takes 1024 samples so 80000/1024 = ~78 iterations 
                     data = stream.read(CHUNK, exception_on_overflow=False)
+                    # to try to improve, save one channel (either 0 with 0::2 or 1 with 1::2)
+                    # also have to change the wf.setnchannels to 1, or back to 2 if deleting the next 2 lines
+                    a = np.frombuffer(data, dtype=np.int16)[0::2]
+                    data = a.tobytes()
                     frames.append(data)
                 stop = time.time()
                 pixels.off() ##stop leds
@@ -169,7 +172,7 @@ def run(model, vocab, audio_path):
                 # Now save the audio to a temp wav file and load in with librosa
                 wav_file = "./tmp.wav"
                 with wave.open(wav_file, "w") as wf:
-                    wf.setnchannels(RESPEAKER_CHANNELS)
+                    wf.setnchannels(1) #RESPEAKER_CHANNELS=2, mono audio=1
                     wf.setsampwidth(p.get_sample_size(p.get_format_from_width(RESPEAKER_WIDTH)))
                     wf.setframerate(RESPEAKER_RATE)
                     wf.writeframes(b''.join(frames))
@@ -200,7 +203,7 @@ def run(model, vocab, audio_path):
                     pass
                 print("KeyboardInterrupt: Program ended by user"); sys.exit()
 
-            
+
     else: #if audio file is provide
         print("transcribing audio file...")
         full_signal, samplerate = librosa.load(audio_path, sr=REQUIRED_SAMPLE_RATE, mono=True)
@@ -216,8 +219,8 @@ def run(model, vocab, audio_path):
         text = label_encodings.decode(model_output.tolist(), skip_special_tokens=True, group_tokens=True)
         print(text)
         print(f"Inference time: {round(stop-start, 3)}s")
-                                                                                            
 
+                                                                                       
                                                                                        
 def parse_args_and_run():
     parser = argparse.ArgumentParser(
@@ -238,12 +241,18 @@ def parse_args_and_run():
         help="path to vocab file containg index to character mappings if not using default",
         required=False,
         default=None)
+    parser.add_argument(
+        '--duration', '-d',
+        help="duration of live recording",
+        required=False,
+        default = 8)
 
     args=parser.parse_args()
-
     run(model=args.model,
         vocab=args.vocab,
-        audio_path=args.audio)
+        audio_path=args.audio,
+        duration=args.duration
+    )
 
 
 if __name__=='__main__':

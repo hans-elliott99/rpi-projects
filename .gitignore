@@ -1,2 +1,3 @@
 .venv
 speech2text/models/wave2vec2-960h.tflite
+__pycache__/
