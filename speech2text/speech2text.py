@@ -158,7 +158,7 @@ def parse_args_and_run():
         '--model', '-m',
         help="path to speech to text model",
         required=False,
-        default='./wave2vec2-960h.tflite')
+        default='./models/quant-wave2vec2-960h.tflite')
     parser.add_argument(
         '--vocab', '-v',
         help="path to vocab file containg index to character mappings",

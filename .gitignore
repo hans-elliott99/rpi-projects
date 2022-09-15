@@ -1,2 +1,2 @@
 .venv
-speech2text/wave2vec2-960h.tflite
+speech2text/models/wave2vec2-960h.tflite
