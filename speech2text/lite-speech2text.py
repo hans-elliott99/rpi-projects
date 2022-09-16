@@ -9,6 +9,7 @@ warnings.simplefilter("ignore", UserWarning) ##to ignore numpy warning, not advi
 # For inputs & model
 import numpy as np
 from tflite_runtime.interpreter import Interpreter 
+import tflite_support
 # For importing audio files with correct format
 import librosa
 # For live recording
@@ -111,7 +112,7 @@ def run(model, vocab, audio_path, duration):
 
     print("initializing model...")
     # initialize label encodings in advance of while loop
-    label_encodings = model_to_text(0)
+    label_encodings = model_to_text()
 
     # Initialize tflite interpreter
     interpreter = Interpreter(model_path=model) ##remove 'tf.lite.'
