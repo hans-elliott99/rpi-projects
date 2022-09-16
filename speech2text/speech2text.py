@@ -1,7 +1,11 @@
 # ############################################# #
-# CONVERT AUDIO FILES OR LIVE RECORDING TO TEXT #
+# CONVERT LIVE RECORDING OR AUDIO FILES TO TEXT #
 # ############################################# #
-
+# This script was written to run on a raspberry pi 3b
+# It requires the quant-wave2vec2-960h.tflite file in the ../models/ folder
+# It is specifically setup to record audio using the ReSpeaker 2-Mics Pi HAT, and should be modified for use with any other microphone (I think pyaudio should make that fairly simple) 
+# Dependencies on raspberry pi include the dependencies for apa102.py and pixels.py which are used for controlling the ReSpeaker HAT's LED lights.
+# Remove the pixels import and any pixels. method in the run() function if you wish to ignore the LEDs or are trying to use a different mic.
 
 import warnings
 warnings.simplefilter("ignore", UserWarning) ##to ignore numpy warning, not advised during testing
@@ -238,7 +242,7 @@ def parse_args_and_run():
         default='./models/quant-wave2vec2-960h.tflite')
     parser.add_argument(
         '--vocab', '-v',
-        help="path to vocab file containg index to character mappings if not using default",
+        help="path to vocab file containg index to character mappings if not using the default vocab",
         required=False,
         default=None)
     parser.add_argument(
@@ -259,8 +263,8 @@ if __name__=='__main__':
     parse_args_and_run()
 
 
-# So, it works (some how) but this model runs way too slow on raspberry pi's tiny compute - quantization led to 3x speed up (from ~ 45s to ~15s)
-# This process will work with other types of models (though some tweaks will need to be made in the audio preprocessing and label decoding phase)
+# Quantization led to 3x inference speed up (from ~ 45s to ~15s)
+# This process will work with other types of models (though tweaks will need to be made in the audio preprocessing and label decoding phase)
 
 
 

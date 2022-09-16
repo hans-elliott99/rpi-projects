@@ -1,7 +1,11 @@
 # ############################################################# #
 # CONVERT AUDIO FILES OR LIVE RECORDING TO TEXT - LIGHTER MODEL #
 # ############################################################# #
-
+# This is a modifed version of speech2text.py which depends on the lighter model, lite-model_ASR_TFLite_pre_trained_models_Englis_1.tflite
+# This model does not currently work on the raspberry pi since it contains TF operations that are not supported.
+# If anything, this is an example of how speech2text.py could be modifed for use with other tflite speech recognition models
+# (Basically modify the audio preprocessing used in the classify_speech() function, and then 
+# modify the model_to_text class based on the encodings used for your given model).  
 
 import warnings
 warnings.simplefilter("ignore", UserWarning) ##to ignore numpy warning, not advised during testing

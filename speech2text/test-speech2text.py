@@ -1,3 +1,6 @@
+## test-speech2text.py is for running with the full tensorflow library (as opposed to tflite_runtime)
+## it can be used to test speech2text on a pc before switching over to the rasbperry pi 
+
 # For modeling
 import numpy as np
 import tensorflow as tf ##change to: import tflite_runtime.interpreter import Interpreter 
